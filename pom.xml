@@ -20,7 +20,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>jp.furplag.sandbox.java.util</groupId>
   <artifactId>commons-wrap</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.1.0-SNAPSHOT</version>
   <inceptionYear>2015</inceptionYear>
   <name>datetime-extensions</name>
   <description>Joda Time based Date and Time handler.</description>
@@ -49,7 +49,7 @@
     <dependency>
       <groupId>jp.furplag.sandbox.java.util</groupId>
       <artifactId>commons-wrap</artifactId>
-      <version>1.0.1</version>
+      <version>1.1.0</version>
     </dependency>
   </dependencies>
   <build>
