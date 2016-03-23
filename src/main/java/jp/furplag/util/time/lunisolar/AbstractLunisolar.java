@@ -1,252 +1,463 @@
-/**
- *
- */
+
 package jp.furplag.util.time.lunisolar;
 
-import static jp.furplag.util.time.DateTimeUtils.*;
-import static jp.furplag.util.time.lunisolar.LunisolarDateTimeUtils.*;
+import static jp.furplag.util.commons.NumberUtils.circulate;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
-
-import jp.furplag.util.Jsonifier;
-import jp.furplag.util.ResourceUtils;
-import jp.furplag.util.commons.NumberUtils;
-import jp.furplag.util.commons.StringUtils;
+import java.util.regex.Pattern;
 
 import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
-import org.joda.time.Interval;
-import org.joda.time.Period;
-import org.joda.time.chrono.GJChronology;
+import org.joda.time.chrono.GregorianChronology;
 
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
+
+import jp.furplag.util.Localizer;
+import jp.furplag.util.ResourceUtils;
+import jp.furplag.util.commons.StringUtils;
+import jp.furplag.util.time.DateTimeUtils;
 
 public abstract class AbstractLunisolar {
 
-  /** Era of time periods for East Asian Lunisolar Date Time. */
-  final class Era implements Comparable<Era>, Serializable {
+  /** the epoch julian date of 2001-01-01T12:00:00Z */
+  public static final double J2000 = 2451545d;
 
-    private static final long serialVersionUID = 1L;
+  /** delta of the days of month in the moon. */
+  public static final double SYNODIC_MONTH_INCREMENTAL = .000000002162;
 
-    /** identifier */
-    private final String key;
+  protected static final Pattern IGNORE_PATTERN = Pattern.compile("'[^']*'");
 
-    /** julian day of start of era. */
-    private final double start;
+  private static final Map<String, String> I18N = new HashMap<String, String>();
 
-    /** julian day of end of era. */
-    private final Double end;
-
-    /** timezone of era. */
-    private DateTimeZone zone = DateTimeZone.UTC;
-
-    private Era(String key, Object start, Object end, DateTimeZone zone) {
-      if (StringUtils.isSimilarToBlank(key)) throw new IllegalArgumentException("\"key\" must not be null.");
-      if (zone != null) this.zone = zone;
-      this.key = key;
-      this.start = toAJD(toDT(start, GJChronology.getInstance(zone)));
-      this.end = end == null ? null : toAJD(toDT(end, GJChronology.getInstance(zone)));
-    }
-
-    @Override
-    public int compareTo(Era other) {
-      if (other == null) return 1;
-      if (start != other.start) return Double.compare(start, other.start);
-
-      return other == null ? end == null ? 0 : 1 : Double.compare(end, other.end);
-    }
-
-    boolean contains(DateTime then) {
-      if (then == null) return false;
-      if (end == null) return toAJD(then) >= start;
-
-      return contains(toAJD(then));
-    }
-
-    boolean contains(double julianDay) {
-      return NumberUtils.contains(julianDay, start, end == null ? julianDay + 1d : end);
-    }
-
-    boolean contains(long millis) {
-      if (end == null) return toAJD(millis) >= start;
-
-      return contains(toAJD(millis));
-    }
-
-    @Override
-    public boolean equals(Object other) {
-      return other instanceof Era && compareTo((Era) other) == 0;
-    }
-
-    String getKey() {
-      return key;
-    }
-
-    Double getEnd() {
-      return end;
-    }
-
-    double getStart() {
-      return start;
-    }
-
-    Integer getYearOfEra(DateTime then) {
-      if (then == null) return null;
-      if (!contains(then)) return null;
-      Period period = new Period(getFirstDayOfYear(then.withMillis(fromJD(start)).plusDays(1)), getFirstDayOfYear(then.plusDays(1)));
-      int year = period.getYears() + 1;
-      int lunisolarMonth = getMonthOfYear(then);
-      if (lunisolarMonth > 10 && then.getMonthOfYear() < lunisolarMonth) year -= 1;
-
-      return year;
-    }
-
-    @Override
-    public String toString() {
-      Map<String, Object> map = new LinkedHashMap<String, Object>();
-      map.put("key", key);
-      map.put("start", toDT(start, GJChronology.getInstanceUTC()).toString());
-      map.put("end", end != null ? toDT(end, GJChronology.getInstanceUTC()).toString() : null);
-      map.put("locale", locale.toString());
-      map.put("zone", zone.getID());
-
-      return Jsonifier.stringifyLazy(map);
-    }
+  protected AbstractLunisolar(LunisolarChronology chronology) {
+    if (chronology == null) throw new IllegalArgumentException("chronology must NOT be empty.");
+    daysOfYear = chronology.getDaysOfYear();
+    daysOfMonth = chronology.getDaysOfMonth();
+    limitOfDayAdvance = chronology.getLimitOfDayAdvance();
+    enforceDayAdvance = limitOfDayAdvance < 0 && limitOfDayAdvance < 1;
+    keplerizeMoon = chronology.isKeplerizeMoon();
+    keplerizeSun = chronology.isKeplerizeSun();
+    resourceName = getClass().getCanonicalName();
   }
 
-  private static final String RESOURCE_PREFIX = "jp.furplag.util.time.lunisolar.";
+  protected final String resourceName;
 
-  private Locale locale = Locale.ROOT;
+  /** astronomical julian day of Lunar month. */
+  private final double daysOfMonth;
 
-  private final DateTimeZone zone;
+  /** astronomical julian day of Solar year. */
+  private final double daysOfYear;
 
-  private List<Era> periods = null;
+  /** if the moment of new moon was after 18:00 of the day, the month start to next day of actual first day of the month. */
+  private final boolean enforceDayAdvance;
 
-  private Map<String, List<Era>> eras = null;
+  private final double limitOfDayAdvance;
 
-  protected AbstractLunisolar(final DateTimeZone zone) {
-    this.zone = zone == null ? DateTimeZone.UTC : zone;
+  /** if false, calculate Lunar month constantly. */
+  private final boolean keplerizeMoon;
+
+  /** if false, calculate Solar term constantly. */
+  private final boolean keplerizeSun;
+
+  public double addMonth(final double julianDay, final int months) {
+    return julianDay + (optimizeSynodicMonth(julianDay) * (double) months);
   }
 
-  protected Map<String, List<Era>> buildMap(final Object[]... periods) {
-    Map<String, List<Era>> map = new HashMap<String, List<Era>>();
-    int periodIndex = 0;
-    for (Object[] period : periods) {
-      periodIndex++;
-      String keyOfPeriod = "";
-      if (period[0] instanceof String) keyOfPeriod = StringUtils.normalize(period[0].toString());
-      if (StringUtils.isSimilarToBlank(keyOfPeriod)) throw new IllegalArgumentException("\"key of Period\" must no be empty.");
-      keyOfPeriod = "period." + keyOfPeriod;
-      List<Era> eras = new ArrayList<Era>();
-      for (int i = 1; i < period.length; i++) {
-        String[] eraOfPeriod = Jsonifier.parseLazy(Jsonifier.stringifyLazy(period[i]), String[].class);
-        if (!(eraOfPeriod != null && NumberUtils.contains(eraOfPeriod.length, 2, 3))) throw new IllegalArgumentException("the era represent by key of era, and duration.");
-        DateTime start = toDT(eraOfPeriod[1], GJChronology.getInstanceUTC(), true).withZone(zone).withTimeAtStartOfDay();
-        if (start == null) throw new IllegalArgumentException("\"start of era\" must not be empty.");
-        String key = StringUtils.trim(eraOfPeriod[0]);
-        if (StringUtils.isSimilarToBlank(key)) throw new IllegalArgumentException("\"key Of Era\" must not be empty.");
-        key = key + "." + start.toString("yyyy");
-        DateTime end = null;
-        if (eraOfPeriod.length > 2 && eraOfPeriod[2] != null) end = toDT(eraOfPeriod[2], GJChronology.getInstanceUTC(), true).withZone(zone).withTimeAtStartOfDay().plusDays(1).minusMillis(1);
-        if (end == null && i < period.length - 1) {
-          String[] next = Jsonifier.parseLazy(Jsonifier.stringifyLazy(period[i + 1]), String[].class);
-          if (next.length > 1) end = toDT(next[1], GJChronology.getInstanceUTC(), true).withZone(zone).withTimeAtStartOfDay().minusMillis(1);
+  public abstract String getString(String formatStyle, Object locale);
+
+  private List<LunisolarMonth> getCalendar(List<Double> firstDays, List<Double> solarTerms) {
+    List<LunisolarMonth> calendar = new ArrayList<LunisolarMonth>();
+    for (int i = 1; i < firstDays.size(); i++) {
+      LunisolarMonth month = new LunisolarMonth(toDT(firstDays.get(i - 1)), toDT(firstDays.get(i)));
+      for (double solarTerm : solarTerms) {
+        if (!month.contains(solarTerm)) continue;
+        if (keplerizeSun) {
+          int termIndex = LunisolarDateTimeUtils.getSolarTerm(getELOfSun(solarTerm));
+          if (termIndex % 2 == 0) {
+            month.addMidClimates(solarTerm);
+          } else {
+            month.addPreClimates(solarTerm);
+          }
+        } else {
+          int termIndex = ((int) Math.round(getELOfSun(solarTerm))) / 15 * 15;
+          System.out.print(DateTimeUtils.toDT(solarTerm, GregorianChronology.getInstance(Localizer.getDateTimeZone("+9"))));
+          System.out.print("("+getELOfSun(solarTerm)+")");
+          System.out.println("("+termIndex+")");
+          if (termIndex % 2 == 0) {
+            month.addMidClimates(solarTerm);
+          } else {
+            month.addPreClimates(solarTerm);
+          }
         }
-        if (end != null && end.isBefore(start)) throw new IllegalArgumentException("\"duration of era\": '" + new Interval(start, end) + "' is invalid.");
-        if (end == null && periodIndex < periods.length) throw new IllegalArgumentException("\"only the last of eras could be set to null end of the period.");
-        eras.add(new Era(key, toAJD(start), end == null ? null : toAJD(end), zone));
       }
-      map.put(keyOfPeriod, eras);
+      calendar.add(month);
     }
 
-    return map;
+    return calendar;
   }
 
-  protected Era getEra(final DateTime then) {
-    Era period = getPeriod(then);
-    if (period == null) return null;
-    for (Era era : eras.get(period.key)) {
-      if (era.contains(then)) return era;
+  protected List<Double> getFirstDayOfMonths(final double fromJD, final double toJD) {
+    return keplerizeMoon ? getDynamicalFDMs(fromJD, toJD) : getStaticalFDMs(fromJD, toJD);
+  }
+
+  private List<Double> getDynamicalFDMs(final double fromJD, final double toJD) {
+    List<Double> firstDays = new ArrayList<Double>();
+    firstDays.add(toAJDAtStartOfDay(dayAdvance(toJD)));
+    do {
+      firstDays.add(toAJDAtStartOfDay(dayAdvance(getFirstDayOfMonth(Iterables.getLast(firstDays) - 2))));
+    } while (Iterables.getLast(firstDays) > fromJD);
+    Collections.reverse(firstDays);
+
+    return firstDays;
+  }
+
+  private List<Double> getStaticalFDMs(final double fromJD, final double toJD) {
+    List<Double> firstDays = new ArrayList<Double>();
+    firstDays.add(toAJDAtStartOfDay(dayAdvance(fromJD)));
+    do {
+      firstDays.add(dayAdvance(Iterables.getLast(firstDays) + daysOfMonth));
+    } while (Iterables.getLast(firstDays) < toJD);
+    if (Iterables.getLast(firstDays) + 2 > toJD) firstDays.remove(firstDays.size() - 1);
+
+    return firstDays;
+  }
+
+  protected List<Double> getSolarTerms(final double fromJD, final double toJD) {
+    return keplerizeSun ? getDynamicalSTMs(fromJD, toJD) : getStaticalSTMs(fromJD, toJD, toJD - fromJD);
+  }
+
+  private List<Double> getDynamicalSTMs(final double fromJD, final double toJD) {
+    int solarTerm = LunisolarDateTimeUtils.getSolarTerm(getELOfSun(toAJDAtEndOfDay(toJD)));
+    List<Double> solarTerms = new ArrayList<Double>();
+    solarTerms.add(getLatestTerm(toAJDAtEndOfDay(toJD), 15 * solarTerm));
+    do {
+      solarTerm--;
+      solarTerms.add(getLatestTerm(Iterables.getLast(solarTerms), circulate(15 * solarTerm)));
+    } while (Iterables.getLast(solarTerms) > fromJD);
+    if (Iterables.getLast(solarTerms) < fromJD) solarTerms.remove(solarTerms.size() - 1);
+    Collections.reverse(solarTerms);
+
+    return solarTerms;
+  }
+
+  private List<Double> getStaticalSTMs(final double fromJD, final double toJD, double daysOfYear) {
+    List<Double> solarTerms = new ArrayList<Double>();
+    solarTerms.add(fromJD);
+    while (Iterables.getLast(solarTerms) < toAJDAtStartOfDay(toJD) + 1) {
+      solarTerms.add(Iterables.getLast(solarTerms) + (daysOfYear / 24) - .3d);
+    }
+    for (Double solarTerm : solarTerms) {
+      System.out.print(LunisolarDateTimeUtils.toDT(solarTerm, GregorianChronology.getInstance(Localizer.getDateTimeZone("+9"))));
+      System.out.println("("+ getELOfSun(solarTerm) +")");
+    }
+    return solarTerms;
+  }
+
+  private double dayAdvance(final double julianDay) {
+    if (!enforceDayAdvance) return julianDay;
+
+    return julianDay + (limitOfDayAdvance <= (julianDay - toAJDAtStartOfDay(julianDay)) ? 1 : 0);
+  }
+
+  protected List<LunisolarMonth> getCalendarOfSolsticed(double julianDay) {
+    double firstDayOfYear = getFirstDayOfYear(toDT(julianDay));
+    double firstDayOfNextYear = getFirstDayOfYear(toDT(addMonth(firstDayOfYear, 14)));
+    double wsOfLastYear = getLatestTerm(firstDayOfYear, 270);
+    double winterSolstice = getLatestTerm(firstDayOfNextYear, 270);
+    List<Double> firstDays = getFirstDayOfMonths(getFirstDayOfMonth(wsOfLastYear), getFirstDayOfMonth(winterSolstice));
+    List<Double> solarTerms = getSolarTerms(getFirstDayOfMonth(wsOfLastYear), getFirstDayOfMonth(winterSolstice));
+    List<LunisolarMonth> calendar = getCalendar(firstDays, solarTerms);
+    int monthIndex = 10;
+    boolean leaped = false;
+    for (LunisolarMonth month : calendar) {
+      if (!leaped && !month.hasMidClimate()) {
+        month.setIntercalary(true);
+        leaped = true;
+      } else {
+        monthIndex = LunisolarDateTimeUtils.normalizeMonth(monthIndex + 1);
+      }
+      month.setMonthOfYear(monthIndex);
     }
 
-    return null;
+    return calendar;
   }
 
-  protected Locale getLocale() {
-    return locale;
-  }
+  protected List<LunisolarMonth> getCalendarOfYear(double julianDay) {
+    List<LunisolarMonth> calendar = getCalendarOfSolsticed(julianDay);
+    calendar.addAll(getCalendarOfSolsticed(getWinterSolstice(toDT(julianDay).plusYears(1))));
+    calendar.remove(0);
+    calendar.remove(0);
+//    Collections.reverse(calendar);
+    do {
+      calendar.remove(calendar.size() - 1);
+    } while (Iterables.getLast(calendar).getMonthOfYear() < 12);
+//    Collections.reverse(calendar);
 
-  protected String getNameOfEra(final DateTime then) {
-    return getNameOfEra(getEra(then));
-  }
-
-  protected String getNameOfEra(final Era era) {
-    return era == null ? StringUtils.EMPTY : getNameOfEra(era.key);
-  }
-
-  protected String getNameOfEra(final String key) {
-    return ResourceUtils.get(RESOURCE_PREFIX + getClass().getSimpleName(), key, new String[]{}, StringUtils.truncateAll(key, "period\\.").split("\\.")[0], locale == null ? Locale.getDefault() : locale);
-  }
-
-  protected String getNameOfSolarTerm(final String[] terms, final double longitude) {
-    int solarTerm = LunisolarDateTimeUtils.getSolarTerm(longitude);
-    if (!(terms != null && NumberUtils.contains(solarTerm, 0, terms.length))) return "";
-
-    return ResourceUtils.get(RESOURCE_PREFIX + getClass().getSimpleName(), "solarTerm." + terms[solarTerm], new String[]{}, terms[solarTerm], locale);
-  }
-
-  protected String getNameOfDayOfWeek(final String[] dayOfWeeks, final int dayOfWeek) {
-    if (!(dayOfWeeks != null && NumberUtils.contains(dayOfWeek, 0, dayOfWeeks.length))) return "";
-
-    return ResourceUtils.get(RESOURCE_PREFIX + getClass().getSimpleName(), "dayOfWeek." + dayOfWeeks[dayOfWeek], new String[]{}, dayOfWeeks[dayOfWeek], locale);
-  }
-
-  protected Era getPeriod(final DateTime then) {
-    if (periods == null) return null;
-    if (then == null) return null;
-    if (then.isBefore(fromJD(periods.get(0).start))) return null;
-    for (Era period : periods) {
-      if (period == null) continue;
-      if (period.contains(then)) return period;
+    for (LunisolarMonth lunisolarMonth : calendar) {
+      System.out.println(lunisolarMonth);
     }
 
-    return null;
+    return calendar;
   }
 
-  protected void initialize(final Map<String, List<Era>> periods) {
-    if (this.periods != null) throw new IllegalArgumentException("\"periods\" already initialized.");
-    if (this.eras != null) throw new IllegalArgumentException("\"eras\" already initialized.");
-    if (!(periods != null && periods.size() > 0)) throw new IllegalArgumentException("\"periods\" must not be empty.");
-    this.periods = new ArrayList<Era>();
-    eras = new HashMap<String, List<Era>>();
-    for (Entry<String, List<Era>> period : periods.entrySet()) {
-      String keyOfPeriod = StringUtils.defaultString(period.getKey());
-      if (StringUtils.isSimilarToBlank(keyOfPeriod)) throw new IllegalArgumentException("\"key of Period\" must no be empty.");
-      if (!keyOfPeriod.startsWith("period.")) keyOfPeriod = "period." + keyOfPeriod;
-      eras.put(keyOfPeriod, ImmutableList.copyOf(period.getValue()));
-      this.periods.add(new Era(keyOfPeriod, period.getValue().get(0).start, period.getValue().get(period.getValue().size() - 1).end, zone));
+  protected String[] getEarthlyBranches(Locale locale) {
+    return getResource(resourceName, "earthlyBranches", null, "子,丑,寅,卯,辰,巳,午,未,申,酉,戌,亥", locale).split(",");
+  }
+
+  protected int getEarthlyBranchOfYear(int year) {
+    int earthlyBranch = (year % 12);
+    if (earthlyBranch < 0) earthlyBranch += 12;
+
+    return earthlyBranch;
+  }
+
+  protected String getEarthlyBranchOfYear(int year, Locale locale) {
+    int earthlyBranch = getEarthlyBranchOfYear(year) - 4;
+    if (earthlyBranch < 0) earthlyBranch += 12;
+
+    return getEarthlyBranches(locale)[earthlyBranch];
+  }
+
+  protected double getELOfMoon(double julianDay) {
+    return LunisolarDateTimeUtils.getELOfMoon(julianDay);
+  }
+
+  protected double getELOfSun(double julianDay) {
+    return LunisolarDateTimeUtils.getELOfSun(julianDay);
+  }
+
+  protected double getFirstDayOfMonth(final double julianDay) {
+    double temporaryN = (long) julianDay;
+    double temporaryF = julianDay - temporaryN;
+    double delta = 0d;
+    double diffN = 0d;
+    double diffF = 0d;
+    int counter = 0;
+    do {
+      counter++;
+      double elOfSun = getELOfSun(temporaryN + temporaryF);
+      double elOfMoon = getELOfMoon(temporaryN + temporaryF);
+      delta = elOfMoon - elOfSun;
+      if (counter == 1) {
+        delta = circulate(delta);
+      } else if (delta > 345) {
+        delta -= 360d;
+      } else if (delta < -15d) {
+        delta = circulate(delta);
+      }
+
+      diffF = delta * daysOfMonth / 360d;
+      diffN = (long) diffF;
+      diffF -= diffN;
+      temporaryN -= diffN;
+      temporaryF -= diffF;
+      if (Math.abs(diffN + diffF) <= 1E-8 && (temporaryN + temporaryF) - julianDay > 0) {
+        temporaryN -= 20d;
+        diffN = 1d;
+      }
+    } while (Math.abs(diffN + diffF) > 1E-8 && counter < 100);
+
+    return temporaryN + temporaryF;
+  }
+
+  protected List<Double> getFirstDayOfMonths(final double winterSolstice) {
+    List<Double> firstDays = new ArrayList<Double>();
+    double firstDayOfNovember = toAJDAtStartOfDay(getFirstDayOfMonth(toAJDAtEndOfDay(winterSolstice)));
+    firstDays.add(toAJDAtStartOfDay(getFirstDayOfMonth(toAJDAtEndOfDay(getLatestTerm(addMonth(winterSolstice, 14), 270)))));
+    do {
+      double firstDay = getFirstDayOfMonth(Iterables.getLast(firstDays) - 2);
+      System.out.print(LunisolarDateTimeUtils.toDT(firstDay, GregorianChronology.getInstance(Localizer.getDateTimeZone("+9"))));
+      if (enforceDayAdvance) {
+        if (toDT(firstDay).getHourOfDay() > 17) firstDay += 1;
+      }
+      System.out.print(" to ");
+      System.out.println(LunisolarDateTimeUtils.toDT(firstDay, GregorianChronology.getInstance(Localizer.getDateTimeZone("+9"))));
+      firstDays.add(toAJDAtStartOfDay(firstDay));
+    } while (Iterables.getLast(firstDays) > firstDayOfNovember);
+    Collections.reverse(firstDays);
+
+    return firstDays;
+  }
+
+  protected int getHeavenlyStemOfYear(int year) {
+    int heavenlyStem = (year % 10);
+    if (heavenlyStem < 0) heavenlyStem += 10;
+
+    return heavenlyStem;
+  }
+
+  protected String getHeavenlyStemOfYear(int year, Locale locale) {
+    int heavenlyStem = getHeavenlyStemOfYear(year) - 4;
+    if (heavenlyStem < 0) heavenlyStem += 10;
+
+    return getHeavenlyStems(locale)[heavenlyStem];
+  }
+
+  protected String[] getHeavenlyStems(Locale locale) {
+    return getResource(resourceName, "heavenlyStems", null, "甲,乙,丙,丁,戊,己,庚,辛,壬,癸", locale).split(",");
+  }
+
+  protected String[] getSexagenaryCycle(Locale locale) {
+    String[] sexagenaryCycle = new String[60];
+    String[] heavenlyStems = getHeavenlyStems(locale);
+    String[] earthlyBranches = getEarthlyBranches(locale);
+    for (int i = 0; i < 60; i++) {
+      sexagenaryCycle[i] = heavenlyStems[i % 10] + earthlyBranches[i % 12];
     }
-    Collections.sort(this.periods);
-    this.periods = ImmutableList.copyOf(this.periods);
+
+    return sexagenaryCycle;
   }
 
-  protected Map<String, Object> toLunisolar(final DateTime then) {
-    return LunisolarDateTimeUtils.toLunisolar(then);
+  protected double getLatestTerm(final double julianDay, final double angle) {
+    final double expected = circulate(angle);
+    double temporaryN = (long) julianDay;
+    double temporaryF = julianDay - temporaryN;
+    double delta = 0d;
+    double diff = 0d;
+    int counter = 0;
+    do {
+      delta = getELOfSun(temporaryN + temporaryF) - expected;
+      if (counter == 0 && delta < 0d) {
+        delta = circulate(delta);
+      } else if (delta > 180d) {
+        delta -= 360d;
+      } else if (delta < -180d) {
+        delta += 360d;
+      }
+      diff = delta * daysOfYear / 360d;
+      temporaryN -= (long) diff;
+      temporaryF -= diff - ((long) diff);
+      if (temporaryF < 0) {
+        temporaryF++;
+        temporaryN--;
+      } else if (temporaryF > 1) {
+        temporaryF--;
+        temporaryN++;
+      }
+      counter++;
+    } while (Math.abs(diff) > 1E-8 && counter < 100);
+
+    return temporaryN + temporaryF;
   }
 
-  protected abstract String toStringLunisolar(final Object then, final String formatStyle) throws Exception;
+  protected int getSexagenaryOfDay(double julianDay) {
+    return (((int) (DateTimeUtils.toJDN(julianDay) + 49L) % 60));
+  }
+
+  protected String getSexagenaryOfDay(double julianDay, Locale locale) {
+    return getSexagenaryCycle(locale)[getSexagenaryOfDay(julianDay)] + getSexagenaryOfDay(julianDay);
+  }
+
+  protected int[] getSexagenaryOfYear(int year) {
+    return new int[getHeavenlyStemOfYear(year) + getEarthlyBranchOfYear(year)];
+  }
+
+  protected List<Double> getSolarTerms(final double winterSolstice) {
+    return keplerizeSun ? getDynamicalSolarTerms(winterSolstice) : getStaticalSolarTerms(winterSolstice);
+  }
+
+  protected String[] getSolarTerms(final Locale locale) {
+    return getResource(resourceName, "solarTerms", null, "春分,清明,穀雨,立夏,小満,芒種,夏至,小暑,大暑,立秋,処暑,白露,秋分,寒露,霜降,立冬,小雪,大雪,冬至,小寒,大寒,立春,雨水,啓蟄", locale).split(",");
+  }
+
+  protected String[] getSixdaysOfWeek(final Locale locale) {
+    return getResource(resourceName, "daysOfWeek", null, "大安,赤口,先勝,友引,先負,仏滅", locale).split(",");
+  }
+
+  protected String getSolarTerm(final int solarTerm, Locale locale) {
+    return getSolarTerms(locale)[solarTerm];
+  }
+
+  protected String getString() {
+    return getString("F-");
+  }
+
+  protected String getString(String formatStyle) {
+    return getString(formatStyle, Localizer.getAvailableLocale("ja_JP_JP"));
+  }
+
+  protected abstract double toAJDAtEndOfDay(Object instant);
+
+  protected abstract double toAJDAtStartOfDay(Object instant);
+
+  protected abstract DateTime toDT(Object instant);
+
+  protected double toTDT(double julianDay) {
+    return LunisolarDateTimeUtils.toTDT(julianDay);
+  }
+
+  private List<Double> getDynamicalSolarTerms(final double winterSolstice) {
+    List<Double> terms = new ArrayList<Double>();
+    terms.add(getLatestTerm(addMonth(winterSolstice, 14), 255));
+    do {
+      terms.add(getLatestTerm(Iterables.getLast(terms), 255 - (15 * terms.size())));
+    } while (Iterables.getLast(terms) > toAJDAtEndOfDay(winterSolstice));
+    terms.add(getLatestTerm(winterSolstice, 255));
+    Collections.reverse(terms);
+
+    return terms;
+  }
+
+  private String getResource(String resourceName, String key, String[] arguments, String defaultString, Locale locale) {
+    if (!(!StringUtils.isSimilarToBlank(key) && locale != null)) return "";
+    String resourceKey = locale.toString() + "_" + key;
+    if (!I18N.containsKey(resourceKey)) I18N.put(resourceKey, ResourceUtils.get(resourceName, key, arguments, defaultString, locale));
+
+    return I18N.get(resourceKey);
+  }
+
+  private List<Double> getStaticalSolarTerms(final double winterSolstice) {
+    List<Double> terms = new ArrayList<Double>();
+    double wsNext = getLatestTerm(addMonth(winterSolstice, 14), 270);
+    double year = wsNext - winterSolstice;
+    terms.add(getLatestTerm(winterSolstice, 255));
+    terms.add(winterSolstice);
+    do {
+      terms.add(Iterables.getLast(terms) + (year / 24));
+    } while (Iterables.getLast(terms) < wsNext);
+    for (Double term : terms) {
+      if (term.compareTo(winterSolstice) != 0) term = term - .3d;
+    }
+
+    return terms;
+  }
+
+  private double optimizeSynodicMonth(final double julianDay) {
+    return ((julianDay - J2000) * SYNODIC_MONTH_INCREMENTAL) + daysOfMonth;
+  }
 
   @SuppressWarnings("unchecked")
-  protected <T extends AbstractLunisolar> T withLocale(final Class<T> clazz, final Locale locale) {
-    if (locale != null) this.locale = locale;
-    return (T) this;
+  protected static <T extends AbstractEra> T getEra(List<T> periods, double julianDay) {
+    AbstractEra period = getPeriod(periods, julianDay);
+    if (period == null) return null;
+    for (AbstractEra era : period.getEras()) {
+      if (era.contains(julianDay)) return (T) era;
+    }
+
+    return null;
+  }
+
+  @SuppressWarnings("unchecked")
+  protected static <T extends AbstractEra> T getPeriod(List<T> periods, double julianDay) {
+    if (periods == null) return null;
+    for (AbstractEra period : periods) {
+      if (period.contains(julianDay)) return (T) period;
+    }
+
+    return null;
+  }
+
+  protected final double getFirstDayOfYear(DateTime then) {
+    double springEquinox = getLatestTerm(toAJDAtEndOfDay(then.withMonthOfYear(4).withDayOfMonth(1)), 0);
+
+    return getFirstDayOfMonth(addMonth(springEquinox, -1));
+  }
+
+  protected final double getWinterSolstice(DateTime then) {
+    return getLatestTerm(getFirstDayOfYear(then.plusYears(1)), 270);
   }
 }

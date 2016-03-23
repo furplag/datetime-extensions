@@ -1,17 +1,39 @@
 /**
+ * Copyright (C) 2015+ furplag (https://github.com/furplag/)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
  *
  */
 package jp.furplag.util.time;
 
-import static jp.furplag.util.time.DateTimeUtils.*;
-import static org.junit.Assert.*;
-import jp.furplag.util.Localizer;
+import static jp.furplag.util.time.DateTimeUtils.MILLIS_PERIOD;
+import static jp.furplag.util.time.DateTimeUtils.fromJD;
+import static jp.furplag.util.time.DateTimeUtils.toAJD;
+import static jp.furplag.util.time.DateTimeUtils.toDT;
+import static org.joda.time.DateTimeUtils.fromJulianDay;
+import static org.joda.time.DateTimeUtils.toJulianDay;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
+import org.joda.time.Hours;
+import org.joda.time.Interval;
 import org.joda.time.chrono.GJChronology;
+import org.joda.time.field.MillisDurationField;
 import org.joda.time.format.DateTimeFormat;
-import org.joda.time.format.ISODateTimeFormat;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -42,31 +64,6 @@ public class DateTimeUtilsTest {
   @After
   public void tearDown() throws Exception {}
 
-//  @Test
-//  public final void testEnforceDefault() {
-//    assertEquals(expected, enforceUTC(dateTime));
-//    dateTime = DateTime.now(DateTimeZone.UTC);
-//    expected = dateTime.toString(DateTimeFormat.mediumDateTime());
-//    assertEquals(expected, enforceDefault(dateTime).toString(DateTimeFormat.mediumDateTime()));
-//    expected = enforceDefault(dateTime).plusMillis(DateTimeZone.getDefault().getOffset(dateTime)).minusMillis(dateTime.getZone().getOffset(dateTime));
-//    assertTrue(dateTime.isEqual((DateTime) expected));
-//
-//    dateTime = new DateTime(dateTime, Localizer.newDateTimeZone("PST"));
-//    expected = dateTime.toString(ISODateTimeFormat.dateHourMinuteSecondFraction());
-//    assertEquals(expected, enforceDefault(dateTime).toString(ISODateTimeFormat.dateHourMinuteSecondFraction()));
-//    expected = enforceDefault(dateTime).plusMillis(DateTimeZone.getDefault().getOffset(dateTime)).minusMillis(dateTime.getZone().getOffset(dateTime));
-//    assertTrue(dateTime.isEqual((DateTime) expected));
-//  }
-//
-//  @Test
-//  public final void testEnforceUTC() {
-//    assertEquals(expected, enforceUTC(dateTime));
-//    dateTime = DateTime.now();
-//    expected = dateTime.toString(DateTimeFormat.mediumDateTime());
-//    assertEquals(expected, enforceUTC(dateTime).toString(DateTimeFormat.mediumDateTime()));
-//    assertTrue(dateTime.isEqual(enforceUTC(dateTime).minusMillis(dateTime.getZone().getOffset(dateTime))));
-//  }
-
   @Test
   public final void testFromJDDouble() {
     dateTime = new DateTime(0L);
@@ -83,7 +80,7 @@ public class DateTimeUtilsTest {
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toAJD(java.lang.Object)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toAJD(java.lang.Object)}.
    */
   @Test
   public final void testToAJDObject() {
@@ -94,7 +91,7 @@ public class DateTimeUtilsTest {
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toAJD(java.lang.Object, boolean)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toAJD(java.lang.Object, boolean)}.
    */
   @Test
   public final void testToAJDObjectBoolean() {
@@ -110,35 +107,15 @@ public class DateTimeUtilsTest {
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object)}.
    */
-  @Test
+  // @Test
   public final void testToDTObject() {
-    System.out.println(toJDN(DateTime.parse("0593-02-07T00:00Z")));
-System.out.println(DateTime.parse("0593-02-07T00:00Z").withChronology(GJChronology.getInstanceUTC()).getDayOfMonth());
-    System.out.println(toJDN(new DateTime(GJChronology.getInstanceUTC()).withMillis(DateTime.parse("0593-02-07T00:00Z").getMillis())));
-    System.out.println(DateTime.parse("0593-02-07T00:00Z"));
-    System.out.println(DateTime.parse("2010-06-30T01:20Z"));
-    System.out.println(DateTime.parse("2010-06-30T01:20+02:00"));
-    System.out.println(new DateTime("2010-06-30T01:20+02:00"));
-//    System.out.println(DateTime.now(GJChronology.getInstanceUTC()).parse("0593-02-07"));
-//    System.out.println(new DateTime(GJChronology.getInstanceUTC()).parse("0593-02-09T00:18:59.000+09:18:59"));
-//    DateTime d = toDT("0593-02-09T00:18:59.000+09:18:59");
-//    System.out.println(toDT(fromJD(toAJD(d))));
-//    System.out.println(toAJD(d));
-//    System.out.println(toJDN(d));
-//
-//    DateTime dd = enforceUTC(d.withZone(DateTimeZone.getDefault()));
-//    System.out.println(toDT(fromJD(toAJD(dd))));
-//    System.out.println(toAJD(dd));
-//    System.out.println(toJDN(dd));
-//    System.out.println(enforceUTC(new DateTime("0593-02-09T00:18:59.000+09:18:59").withChronology(GJChronology.getInstance())));
-//    System.out.println(enforceUTC(new DateTime("0593-02-09T00:18:59.000+09:18:59", GJChronology.getInstance())));
     // fail("まだ実装されていません"); // TODO
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object, boolean)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object, boolean)}.
    */
   @Test
   public final void testToDTObjectBoolean() {
@@ -146,7 +123,7 @@ System.out.println(DateTime.parse("0593-02-07T00:00Z").withChronology(GJChronolo
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object, java.lang.Object)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object, java.lang.Object)}.
    */
   @Test
   public final void testToDTObjectObject() {
@@ -154,15 +131,31 @@ System.out.println(DateTime.parse("0593-02-07T00:00Z").withChronology(GJChronolo
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object, java.lang.Object, boolean)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toDT(java.lang.Object, java.lang.Object, boolean)}.
    */
   @Test
   public final void testToDTObjectObjectBoolean() {
-    // fail("まだ実装されていません"); // TODO
+    assertEquals("null", null, toDT(null, null, true));
+
+    assertEquals(DateTime.now(DateTimeZone.UTC).toString(DateTimeFormat.forStyle("MS")), toDT(null, null, false).toString(DateTimeFormat.forStyle("MS")));
+    assertEquals(new DateTime("1996-01-23T0Z", DateTimeZone.UTC), toDT(822355200000L, null, true));
+    assertEquals(new DateTime("1996-01-23T0Z", DateTimeZone.UTC), toDT(2450105.5f, null, true));
+    assertEquals(null, toDT(Float.NaN, null, true));
+    assertEquals(null, toDT(Double.NEGATIVE_INFINITY, null, true));
+    assertEquals(new DateTime("1996-01-23T0Z", DateTimeZone.UTC), toDT("1996-01-23T0Z", null, true));
+    assertEquals(new DateTime("1996-01-23T0Z", DateTimeZone.UTC), toDT("1996-01-23T9+0900", null, true));
+    assertEquals(new DateTime("1996-01-23T0Z", DateTimeZone.getDefault()), toDT("1996-01-23T0Z", DateTimeZone.getDefault(), true));
+
+    assertEquals(new DateTime("1996-01-23T0Z", DateTimeZone.getDefault()), toDT("1996-01-23T0Z", new DateTime("1996-01-23"), true));
+
+    assertEquals(new DateTime("0800-12-25T0Z", GJChronology.getInstanceUTC()), toDT("0800-12-25T0Z", null, true));
+    assertEquals(new DateTime("2112-09-03T0Z", GJChronology.getInstanceUTC()).toString(), toDT("2112-09-03T0Z", null, true).toString());
+
+    assertEquals(new DateTime("1996-01-23T0Z", GJChronology.getInstance()).toString(), toDT("1996-01-23T0Z", DateTimeZone.getDefault(), true).toString());
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toJDN(java.lang.Object)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toJDN(java.lang.Object)}.
    */
   @Test
   public final void testToJDNObject() {
@@ -170,7 +163,7 @@ System.out.println(DateTime.parse("0593-02-07T00:00Z").withChronology(GJChronolo
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toJDN(java.lang.Object, boolean)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toJDN(java.lang.Object, boolean)}.
    */
   @Test
   public final void testToJDNObjectBoolean() {
@@ -178,7 +171,7 @@ System.out.println(DateTime.parse("0593-02-07T00:00Z").withChronology(GJChronolo
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toMJD(java.lang.Object)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toMJD(java.lang.Object)}.
    */
   @Test
   public final void testToMJDObject() {
@@ -186,7 +179,7 @@ System.out.println(DateTime.parse("0593-02-07T00:00Z").withChronology(GJChronolo
   }
 
   /**
-   * {@link jp.furplag.util.time.DateTimeUtils#toMJD(java.lang.Object, boolean)} のためのテスト・メソッド。
+   * {@link jp.furplag.util.time.DateTimeUtils#toMJD(java.lang.Object, boolean)}.
    */
   @Test
   public final void testToMJDObjectBoolean() {

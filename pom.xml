@@ -19,8 +19,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>jp.furplag.sandbox.java.util</groupId>
-  <artifactId>commons-wrap</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <artifactId>datetime-extensions</artifactId>
+  <version>0.1.1-SNAPSHOT</version>
   <inceptionYear>2015</inceptionYear>
   <name>datetime-extensions</name>
   <description>Joda Time based Date and Time handler.</description>
@@ -33,6 +33,24 @@
     <!-- github server corresponds to entry in ~/.m2/settings.xml -->
     <github.global.server>github</github.global.server>
   </properties>
+  <repositories>
+    <repository>
+      <id>prettytime</id>
+      <url>https://raw.github.com/furplag/prettytime/mvn-repo/</url>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>commons-wrap</id>
+      <url>https://raw.github.com/furplag/commons-wrap/mvn-repo/</url>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+      </snapshots>
+    </repository>
+  </repositories>
   <dependencies>
     <dependency>
       <groupId>junit</groupId>
@@ -49,7 +67,12 @@
     <dependency>
       <groupId>jp.furplag.sandbox.java.util</groupId>
       <artifactId>commons-wrap</artifactId>
-      <version>1.1.0</version>
+      <version>2.0.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>org.ocpsoft.prettytime</groupId>
+      <artifactId>prettytime</artifactId>
+      <version>4.0.1-SNAPSHOT</version>
     </dependency>
   </dependencies>
   <build>
