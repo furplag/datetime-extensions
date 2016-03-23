@@ -29,10 +29,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
-import org.joda.time.Hours;
-import org.joda.time.Interval;
 import org.joda.time.chrono.GJChronology;
-import org.joda.time.field.MillisDurationField;
 import org.joda.time.format.DateTimeFormat;
 import org.junit.After;
 import org.junit.Before;
