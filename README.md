@@ -1,5 +1,5 @@
 # datetime-extensions
-[![Build Status](https://travis-ci.org/furplag/datetime-extensions.svg?branch=master)](https://travis-ci.org/furplag/datetime-extensions)
+[![deprecated](https://img.shields.io/badge/deprecated-too%20stale%20to%20maintain-red.svg)](https://img.shields.io/badge/deprecated-too%20stale%20to%20maintain-red.svg)
 
 [Joda Time](http://www.joda.org/joda-time/) based Date and Time handler.
 
